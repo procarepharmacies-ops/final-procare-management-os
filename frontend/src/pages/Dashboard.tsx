@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
-import { TrendingUp, ShoppingCart, Package, Users, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { TrendingUp, ShoppingCart, Package, Users, AlertCircle, ArrowUpRight, ArrowDownRight, Loader2, AlertTriangle, Clock } from 'lucide-react'
+import { api } from '../api'
 
 const salesData = [
   { day: 'Mon', sales: 12400, purchases: 4200 },
@@ -42,12 +44,34 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 }
 
 export default function Dashboard() {
+  const [stats, setStats] = useState({
+    todayRevenue: 0,
+    todayInvoices: 0,
+    lowStockCount: 0,
+    expiringCount: 0
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await api.dashboard.getStats()
+        setStats(res)
+      } catch (err) {
+        console.error('Failed to fetch stats', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStats()
+  }, [])
+
   return (
     <div>
       <div className="page-header">
         <div>
           <h1 className="page-title">Good morning, Admin 👋</h1>
-          <p className="page-subtitle">Here's what's happening at Elsanta branch today</p>
+          <p className="page-subtitle">Here's what's happening at Mashala branch today</p>
         </div>
         <button className="btn btn-primary btn-sm">
           <ShoppingCart size={15} /> New Sale
@@ -57,15 +81,18 @@ export default function Dashboard() {
       {/* KPI Cards */}
       <div className="grid-4" style={{ marginBottom: 24 }}>
         {[
-          { label: "Today's Revenue", value: "29,400", unit: "EGP", change: "+18.2%", up: true, color: "blue", icon: <TrendingUp size={48} /> },
-          { label: "Invoices Today", value: "184", unit: "bills", change: "+12 vs yesterday", up: true, color: "green", icon: <ShoppingCart size={48} /> },
-          { label: "Products Sold", value: "1,247", unit: "units", change: "-3.1%", up: false, color: "amber", icon: <Package size={48} /> },
-          { label: "Active Customers", value: "1,197", unit: "total", change: "+5 this week", up: true, color: "purple", icon: <Users size={48} /> },
+          { label: "Today's Revenue", value: stats.todayRevenue.toLocaleString(), unit: "EGP", change: "Live", up: true, color: "blue", icon: <TrendingUp size={48} /> },
+          { label: "Invoices Today", value: stats.todayInvoices.toLocaleString(), unit: "bills", change: "Live", up: true, color: "green", icon: <ShoppingCart size={48} /> },
+          { label: "Low Stock Items", value: stats.lowStockCount.toLocaleString(), unit: "products", change: "Needs attention", up: false, color: "amber", icon: <AlertTriangle size={48} /> },
+          { label: "Expiring Soon", value: stats.expiringCount.toLocaleString(), unit: "products", change: "< 30 days", up: false, color: "purple", icon: <Clock size={48} /> },
         ].map(c => (
           <div key={c.label} className={`stat-card ${c.color}`}>
             <div className="stat-icon">{c.icon}</div>
             <div className="stat-label">{c.label}</div>
-            <div className="stat-value">{c.value} <span style={{ fontSize:'0.9rem', fontWeight:400, color:'var(--text-muted)' }}>{c.unit}</span></div>
+            <div className="stat-value">
+              {loading ? <Loader2 className="spin" size={24} style={{ marginTop: 4 }} /> : c.value} 
+              <span style={{ fontSize:'0.9rem', fontWeight:400, color:'var(--text-muted)' }}> {c.unit}</span>
+            </div>
             <div className={`stat-change ${c.up ? 'up' : 'down'}`}>
               {c.up ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />} {c.change}
             </div>
@@ -133,20 +160,42 @@ export default function Dashboard() {
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
           <AlertCircle size={18} color="#f59e0b" />
           <h3 style={{ fontSize:'0.95rem', fontWeight:700, color:'#f8fafc' }}>System Alerts</h3>
-          <span className="badge badge-warning" style={{ marginLeft:'auto' }}>{alerts.length} alerts</span>
+          <span className="badge badge-warning" style={{ marginLeft:'auto' }}>
+            {loading ? <Loader2 className="spin" size={12} /> : (stats.lowStockCount + stats.expiringCount)} alerts
+          </span>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {alerts.map((a, i) => (
-            <div key={i} style={{
+          {stats.expiringCount > 0 && (
+            <div style={{
               display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
               borderRadius:8, fontSize:'0.85rem',
-              background: a.type==='danger' ? 'rgba(239,68,68,0.08)' : a.type==='warning' ? 'rgba(245,158,11,0.08)' : 'rgba(37,99,235,0.08)',
-              border: `1px solid ${a.type==='danger' ? 'rgba(239,68,68,0.2)' : a.type==='warning' ? 'rgba(245,158,11,0.2)' : 'rgba(37,99,235,0.2)'}`,
-              color: a.type==='danger' ? '#f87171' : a.type==='warning' ? '#fbbf24' : '#60a5fa',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              color: '#f87171',
             }}>
-              <AlertCircle size={15} /> {a.msg}
+              <AlertCircle size={15} /> {stats.expiringCount} products near expiry (&lt; 30 days)
             </div>
-          ))}
+          )}
+          {stats.lowStockCount > 0 && (
+            <div style={{
+              display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
+              borderRadius:8, fontSize:'0.85rem',
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.2)',
+              color: '#fbbf24',
+            }}>
+              <AlertCircle size={15} /> {stats.lowStockCount} products below minimum stock level
+            </div>
+          )}
+          <div style={{
+            display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
+            borderRadius:8, fontSize:'0.85rem',
+            background: 'rgba(37,99,235,0.08)',
+            border: '1px solid rgba(37,99,235,0.2)',
+            color: '#60a5fa',
+          }}>
+            <AlertCircle size={15} /> Inter-branch order #4821 pending approval
+          </div>
         </div>
       </div>
     </div>

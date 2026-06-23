@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Trash2, Plus, Minus, Printer, MessageCircle, Pill, CreditCard, Banknote, X, CheckCircle } from 'lucide-react'
+import { Search, Trash2, Plus, Minus, Printer, MessageCircle, Pill, CreditCard, Banknote, X, CheckCircle, Loader2 } from 'lucide-react'
+import { api } from '../api'
 
 interface CartItem {
   id: number
@@ -12,6 +13,19 @@ interface CartItem {
   company: string
 }
 
+interface Product {
+  id: number
+  nameAr: string
+  nameEn: string
+  sellPrice: number
+  buyPrice: number
+  stock: number
+  barcode: string
+  active: boolean
+  group?: string
+  company?: string
+}
+
 interface SubstituteSuggestion {
   id: number
   name: string
@@ -21,16 +35,6 @@ interface SubstituteSuggestion {
   saving: number
   activeIngredient: string
 }
-
-const MOCK_PRODUCTS: CartItem[] = [
-  { id: 1, name: 'Paracetamol 500mg', nameAr: 'باراسيتامول', price: 5, qty: 1, disc: 0, barcode: '6221064020043', company: 'Pharco' },
-  { id: 2, name: 'Augmentin 625mg Tab', nameAr: 'أوجمنتين', price: 28, qty: 1, disc: 0, barcode: '6221064020044', company: 'GSK' },
-  { id: 3, name: 'Brufen 400mg', nameAr: 'بروفين', price: 15, qty: 1, disc: 0, barcode: '6221064020045', company: 'Knoll' },
-  { id: 4, name: 'Omega 3 Caps 1000mg', nameAr: 'أوميجا 3', price: 45, qty: 1, disc: 0, barcode: '6221064020046', company: 'Amoun' },
-  { id: 5, name: 'Vitamin D3 1000 IU', nameAr: 'فيتامين د3', price: 22, qty: 1, disc: 10, barcode: '6221064020047', company: 'EVA' },
-  { id: 6, name: 'Amoxicillin 500mg', nameAr: 'أموكسيسيلين', price: 18, qty: 1, disc: 5, barcode: '6221064020048', company: 'Pharco' },
-  { id: 7, name: 'Metformin 500mg', nameAr: 'ميتفورمين', price: 12, qty: 1, disc: 0, barcode: '6221064020049', company: 'EPICO' },
-]
 
 // Titan substitution suggestions (mocked from parsed .phy data)
 const SUBSTITUTES: Record<string, SubstituteSuggestion[]> = {
@@ -47,28 +51,51 @@ export default function Sales() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [barcodeInput, setBarcodeInput] = useState('')
   const [search, setSearch] = useState('')
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(false)
   const [discountPercent, setDiscountPercent] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState<'cash'|'card'|'network'>('cash')
   const [cashPaid, setCashPaid] = useState('')
   const [showSubstitute, setShowSubstitute] = useState<SubstituteSuggestion[] | null>(null)
   const [substituteFor, setSubstituteFor] = useState<CartItem | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [checkingOut, setCheckingOut] = useState(false)
   const barcodeRef = useRef<HTMLInputElement>(null)
 
   // Focus barcode on load
   useEffect(() => { barcodeRef.current?.focus() }, [])
 
-  const filteredProducts = MOCK_PRODUCTS.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.nameAr.includes(search) ||
-    p.barcode.includes(search)
-  )
+  // Search products
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true)
+      try {
+        const res = await api.products.search(search)
+        setProducts(res.data)
+      } catch (err) {
+        console.error('Failed to search products', err)
+        setProducts([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    const timeoutId = setTimeout(fetchProducts, 300)
+    return () => clearTimeout(timeoutId)
+  }, [search])
 
-  const addToCart = (product: CartItem) => {
+  const addToCart = (product: Product | CartItem) => {
     setCart(prev => {
       const existing = prev.find(i => i.id === product.id)
       if (existing) return prev.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i)
-      const newItem = { ...product, qty: 1 }
+      
+      const price = 'sellPrice' in product ? product.sellPrice : product.price
+      const disc = 'discountPercent' in product ? product.discountPercent || 0 : (product as CartItem).disc || 0
+      const company = product.company || 'Generic'
+      const name = 'nameEn' in product ? product.nameEn : product.name
+      
+      const newItem: CartItem = { 
+        id: product.id, name, nameAr: product.nameAr, price, disc, barcode: product.barcode, company, qty: 1 
+      }
       // Check for Titan substitution suggestions
       const subs = SUBSTITUTES[String(product.id)]
       if (subs) {
@@ -82,9 +109,22 @@ export default function Sales() {
     barcodeRef.current?.focus()
   }
 
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const product = MOCK_PRODUCTS.find(p => p.barcode === barcodeInput || p.id === parseInt(barcodeInput))
+    if (!barcodeInput) return
+    
+    // Check if in current search results
+    let product = products.find(p => p.barcode === barcodeInput || String(p.id) === barcodeInput)
+    
+    if (!product) {
+      try {
+        const res = await api.products.search(barcodeInput)
+        product = res.data[0]
+      } catch (err) {
+        console.error('Barcode search failed', err)
+      }
+    }
+    
     if (product) addToCart(product)
     else setBarcodeInput('')
   }
@@ -100,14 +140,40 @@ export default function Sales() {
   const total = subtotal - totalDisc
   const change = cashPaid ? Math.max(0, parseFloat(cashPaid) - total) : 0
 
-  const handleCheckout = () => {
-    setShowSuccess(true)
-    setTimeout(() => {
-      setShowSuccess(false)
-      setCart([])
-      setDiscountPercent(0)
-      setCashPaid('')
-    }, 2500)
+  const handleCheckout = async () => {
+    if (cart.length === 0) return
+    setCheckingOut(true)
+    
+    try {
+      await api.invoices.create({
+        customerId: null, // Guest checkout for now
+        totalAmount: subtotal,
+        discount: totalDisc,
+        netAmount: total,
+        paymentType: paymentMethod,
+        items: cart.map(i => ({
+          id: i.id,
+          qty: i.qty,
+          price: i.price,
+          disc: i.disc
+        }))
+      })
+      
+      setShowSuccess(true)
+      setTimeout(() => {
+        setShowSuccess(false)
+        setCart([])
+        setDiscountPercent(0)
+        setCashPaid('')
+        setSearch('')
+        setProducts([])
+      }, 2500)
+    } catch (err) {
+      console.error('Checkout failed', err)
+      alert('Checkout failed: ' + (err as Error).message)
+    } finally {
+      setCheckingOut(false)
+    }
   }
 
   return (
@@ -142,31 +208,40 @@ export default function Sales() {
 
         {/* Product Grid */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
-            {(search ? filteredProducts : MOCK_PRODUCTS).map(p => (
-              <div
-                key={p.id}
-                onClick={() => addToCart(p)}
-                style={{
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 12, padding: '14px 12px', cursor: 'pointer',
-                  transition: 'all 0.18s', position: 'relative',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(37,99,235,0.12)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,0.4)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-              >
-                {p.disc > 0 && (
-                  <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(16,185,129,0.2)', color: '#34d399', fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>
-                    -{p.disc}%
-                  </span>
-                )}
-                <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#cbd5e1', marginBottom: 4, lineHeight: 1.3 }}>{p.name}</p>
-                <p style={{ fontSize: '0.72rem', color: '#475569', direction: 'rtl', marginBottom: 8 }}>{p.nameAr}</p>
-                <p style={{ fontSize: '0.75rem', color: '#475569', marginBottom: 6 }}>{p.company}</p>
-                <p style={{ fontSize: '1rem', fontWeight: 800, color: '#60a5fa' }}>{p.price} <span style={{ fontSize: '0.7rem', fontWeight: 400 }}>EGP</span></p>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader2 className="spin" color="#60a5fa" /></div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+              {products.map(p => (
+                <div
+                  key={p.id}
+                  onClick={() => addToCart(p)}
+                  style={{
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 12, padding: '14px 12px', cursor: 'pointer',
+                    transition: 'all 0.18s', position: 'relative',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(37,99,235,0.12)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,0.4)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                >
+                  {(p.stock < 10) && (
+                    <span style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(239,68,68,0.2)', color: '#f87171', fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>
+                      {p.stock} left
+                    </span>
+                  )}
+                  <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#cbd5e1', marginBottom: 4, lineHeight: 1.3 }}>{p.nameEn}</p>
+                  <p style={{ fontSize: '0.72rem', color: '#475569', direction: 'rtl', marginBottom: 8 }}>{p.nameAr}</p>
+                  <p style={{ fontSize: '0.75rem', color: '#475569', marginBottom: 6 }}>{p.company || 'Generic'}</p>
+                  <p style={{ fontSize: '1rem', fontWeight: 800, color: '#60a5fa' }}>{p.sellPrice} <span style={{ fontSize: '0.7rem', fontWeight: 400 }}>EGP</span></p>
+                </div>
+              ))}
+              {!loading && products.length === 0 && search && (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                  No products found for "{search}"
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -293,11 +368,11 @@ export default function Sales() {
             </button>
             <button
               className="btn btn-primary"
-              style={{ flex: 2 }}
+              style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
               onClick={handleCheckout}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || checkingOut}
             >
-              ✓ Checkout {total > 0 ? `(${total.toFixed(0)} EGP)` : ''}
+              {checkingOut ? <Loader2 className="spin" size={14} /> : '✓ Checkout'} {total > 0 && !checkingOut ? `(${total.toFixed(0)} EGP)` : ''}
             </button>
           </div>
         </div>

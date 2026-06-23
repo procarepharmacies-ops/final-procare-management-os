@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Search, MessageCircle, Phone, Star, History, Plus, ChevronRight, Gift } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, MessageCircle, Phone, Star, History, Plus, ChevronRight, Gift, Loader2 } from 'lucide-react'
+import { api } from '../api'
 
 interface Customer {
   id: number
@@ -8,28 +9,26 @@ interface Customer {
   mobile: string
   balance: number
   points: number
-  discPercent: number
-  totalSpent: number
+  discountPercent: number
+  totalPurchases: number
   lastVisit: string
-  invoices: number
-  tier: 'bronze' | 'silver' | 'gold' | 'platinum'
 }
 
-const MOCK_CUSTOMERS: Customer[] = [
-  { id: 1, name: 'Ahmed Mohamed Hassan', phone: '02-27651234', mobile: '01012345678', balance: -250, points: 1840, discPercent: 10, totalSpent: 18400, lastVisit: '2026-06-22', invoices: 84, tier: 'gold' },
-  { id: 2, name: 'Sara Ibrahim Ali', phone: '', mobile: '01198765432', balance: 0, points: 620, discPercent: 5, totalSpent: 6200, lastVisit: '2026-06-20', invoices: 31, tier: 'silver' },
-  { id: 3, name: 'Omar Khaled Nour', phone: '03-5551234', mobile: '01234567890', balance: 500, points: 4200, discPercent: 15, totalSpent: 42000, lastVisit: '2026-06-23', invoices: 187, tier: 'platinum' },
-  { id: 4, name: 'Mona Samir Tawfik', phone: '', mobile: '01556789012', balance: 0, points: 230, discPercent: 0, totalSpent: 2300, lastVisit: '2026-06-10', invoices: 12, tier: 'bronze' },
-  { id: 5, name: 'Karim Youssef Farag', phone: '02-38884321', mobile: '01098765432', balance: -150, points: 980, discPercent: 8, totalSpent: 9800, lastVisit: '2026-06-18', invoices: 46, tier: 'silver' },
-  { id: 6, name: 'Dina Mostafa Saleh', phone: '', mobile: '01155443322', balance: 200, points: 3100, discPercent: 12, totalSpent: 31000, lastVisit: '2026-06-22', invoices: 142, tier: 'gold' },
-]
+interface Invoice {
+  invoiceId: number
+  date: string
+  totalAmount: number
+  discount: number
+  netAmount: number
+  paymentType: string
+}
 
-const MOCK_HISTORY = [
-  { id: 'INV-4821', date: '2026-06-22', items: 5, total: 284 },
-  { id: 'INV-4756', date: '2026-06-15', items: 3, total: 127 },
-  { id: 'INV-4698', date: '2026-06-08', items: 8, total: 412 },
-  { id: 'INV-4621', date: '2026-05-30', items: 2, total: 89 },
-]
+function getTier(points: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
+  if (points > 3000) return 'platinum'
+  if (points > 1000) return 'gold'
+  if (points > 500) return 'silver'
+  return 'bronze'
+}
 
 const tierConfig = {
   bronze: { color: '#cd7f32', bg: 'rgba(205,127,50,0.15)', label: 'Bronze' },
@@ -45,14 +44,49 @@ function sendWhatsApp(mobile: string, name: string) {
 
 export default function Customers() {
   const [search, setSearch] = useState('')
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Customer | null>(null)
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
 
-  const filtered = MOCK_CUSTOMERS.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.mobile.includes(search) ||
-    c.phone.includes(search)
-  )
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setLoading(true)
+      try {
+        const res = await api.customers.search(search)
+        setCustomers(res)
+      } catch (err) {
+        console.error('Failed to fetch customers', err)
+        setCustomers([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    const timeoutId = setTimeout(fetchCustomers, 300)
+    return () => clearTimeout(timeoutId)
+  }, [search])
+
+  useEffect(() => {
+    if (selected) {
+      const fetchInvoices = async () => {
+        setInvoicesLoading(true)
+        try {
+          const res = await api.customers.getInvoices(selected.id)
+          setInvoices(res)
+        } catch (err) {
+          console.error('Failed to fetch invoices', err)
+          setInvoices([])
+        } finally {
+          setInvoicesLoading(false)
+        }
+      }
+      fetchInvoices()
+    } else {
+      setInvoices([])
+    }
+  }, [selected])
 
   return (
     <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 128px)' }}>
@@ -74,46 +108,53 @@ export default function Customers() {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {filtered.map(c => {
-            const tc = tierConfig[c.tier]
-            const isSelected = selected?.id === c.id
-            return (
-              <div
-                key={c.id}
-                onClick={() => setSelected(c)}
-                style={{
-                  background: isSelected ? 'rgba(37,99,235,0.12)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isSelected ? 'rgba(37,99,235,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                  borderRadius: 12, padding: '14px 16px', cursor: 'pointer',
-                  transition: 'all 0.18s', display: 'flex', alignItems: 'center', gap: 14,
-                }}
-              >
-                {/* Avatar */}
-                <div style={{
-                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                  background: `linear-gradient(135deg, ${tc.color}, #0f172a)`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: '1rem', color: '#fff',
-                }}>
-                  {c.name[0]}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                    <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
-                    <span style={{ background: tc.bg, color: tc.color, borderRadius: 6, padding: '1px 7px', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>{tc.label}</span>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader2 className="spin" color="#60a5fa" /></div>
+          ) : customers.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No customers found</div>
+          ) : (
+            customers.map(c => {
+              const tier = getTier(c.points || 0)
+              const tc = tierConfig[tier]
+              const isSelected = selected?.id === c.id
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setSelected(c)}
+                  style={{
+                    background: isSelected ? 'rgba(37,99,235,0.12)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${isSelected ? 'rgba(37,99,235,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                    borderRadius: 12, padding: '14px 16px', cursor: 'pointer',
+                    transition: 'all 0.18s', display: 'flex', alignItems: 'center', gap: 14,
+                  }}
+                >
+                  {/* Avatar */}
+                  <div style={{
+                    width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                    background: `linear-gradient(135deg, ${tc.color}, #0f172a)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: '1rem', color: '#fff',
+                  }}>
+                    {c.name ? c.name[0].toUpperCase() : '?'}
                   </div>
-                  <p style={{ fontSize: '0.75rem', color: '#475569' }}>📱 {c.mobile} · {c.invoices} invoices</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
+                      <span style={{ background: tc.bg, color: tc.color, borderRadius: 6, padding: '1px 7px', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>{tc.label}</span>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: '#475569' }}>📱 {c.mobile || c.phone || 'No phone'} · Last Visit {c.lastVisit ? new Date(c.lastVisit).toLocaleDateString() : 'N/A'}</p>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>⭐ {(c.points || 0).toLocaleString()} pts</p>
+                    <p style={{ fontSize: '0.72rem', color: c.balance < 0 ? '#f87171' : c.balance > 0 ? '#34d399' : '#475569', marginTop: 2 }}>
+                      {c.balance !== 0 ? `${c.balance > 0 ? '+' : ''}${c.balance} EGP` : 'Settled'}
+                    </p>
+                  </div>
+                  <ChevronRight size={15} color="#334155" />
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>⭐ {c.points.toLocaleString()} pts</p>
-                  <p style={{ fontSize: '0.72rem', color: c.balance < 0 ? '#f87171' : c.balance > 0 ? '#34d399' : '#475569', marginTop: 2 }}>
-                    {c.balance !== 0 ? `${c.balance > 0 ? '+' : ''}${c.balance} EGP` : 'Settled'}
-                  </p>
-                </div>
-                <ChevronRight size={15} color="#334155" />
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
       </div>
 
@@ -121,10 +162,10 @@ export default function Customers() {
       <div style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {selected ? (
           <>
-            {/* Profile Card */}
             <div className="glass-card" style={{ padding: 22 }}>
               {(() => {
-                const tc = tierConfig[selected.tier]
+                const tier = getTier(selected.points || 0)
+                const tc = tierConfig[tier]
                 return (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
@@ -134,7 +175,7 @@ export default function Customers() {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 800, fontSize: '1.4rem', color: '#fff',
                         boxShadow: `0 0 20px ${tc.color}44`,
-                      }}>{selected.name[0]}</div>
+                      }}>{selected.name ? selected.name[0].toUpperCase() : '?'}</div>
                       <div>
                         <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc' }}>{selected.name}</h3>
                         <span style={{ background: tc.bg, color: tc.color, borderRadius: 8, padding: '3px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -146,10 +187,10 @@ export default function Customers() {
                     {/* Stats */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                       {[
-                        { label: 'Points', value: selected.points.toLocaleString(), icon: '⭐', color: '#fbbf24' },
-                        { label: 'Discount', value: `${selected.discPercent}%`, icon: '🏷️', color: '#34d399' },
-                        { label: 'Total Spent', value: `${(selected.totalSpent / 1000).toFixed(1)}K EGP`, icon: '💰', color: '#60a5fa' },
-                        { label: 'Balance', value: `${selected.balance} EGP`, icon: '📊', color: selected.balance < 0 ? '#f87171' : '#34d399' },
+                        { label: 'Points', value: (selected.points || 0).toLocaleString(), icon: '⭐', color: '#fbbf24' },
+                        { label: 'Discount', value: `${selected.discountPercent || 0}%`, icon: '🏷️', color: '#34d399' },
+                        { label: 'Total Spent', value: `${((selected.totalPurchases || 0) / 1000).toFixed(1)}K EGP`, icon: '💰', color: '#60a5fa' },
+                        { label: 'Balance', value: `${selected.balance || 0} EGP`, icon: '📊', color: selected.balance < 0 ? '#f87171' : '#34d399' },
                       ].map(s => (
                         <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '10px 12px' }}>
                           <p style={{ fontSize: '0.72rem', color: '#475569', marginBottom: 4 }}>{s.icon} {s.label}</p>
@@ -197,18 +238,24 @@ export default function Customers() {
                 <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc' }}>Recent Invoices</h3>
               </div>
               <div style={{ overflowY: 'auto', flex: 1 }}>
-                {MOCK_HISTORY.map(h => (
-                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(37,99,235,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <History size={15} color="#60a5fa" />
+                {invoicesLoading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}><Loader2 className="spin" color="#60a5fa" /></div>
+                ) : invoices.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>No invoices found</div>
+                ) : (
+                  invoices.map(h => (
+                    <div key={h.invoiceId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(37,99,235,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <History size={15} color="#60a5fa" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#cbd5e1' }}>INV-{h.invoiceId}</p>
+                        <p style={{ fontSize: '0.72rem', color: '#475569' }}>{new Date(h.date).toLocaleDateString()} · {h.paymentType}</p>
+                      </div>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#60a5fa' }}>{h.netAmount} EGP</span>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#cbd5e1' }}>{h.id}</p>
-                      <p style={{ fontSize: '0.72rem', color: '#475569' }}>{h.date} · {h.items} items</p>
-                    </div>
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#60a5fa' }}>{h.total} EGP</span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </>

@@ -1,23 +1,44 @@
-import { useState } from 'react'
-import { Search, Plus, ChevronDown, Tag, Building } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, Plus, ChevronDown, Tag, Building, Loader2 } from 'lucide-react'
+import { api } from '../api'
 
-const MOCK_PRODUCTS = Array.from({ length: 20 }, (_, i) => ({
-  id: i + 1,
-  nameAr: ['باراسيتامول', 'أوجمنتين', 'بروفين', 'أوميجا 3', 'فيتامين د', 'أمبيسلين', 'سيفالوسبورين', 'ميترونيدازول', 'أتورفاستاتين', 'ليزينوبريل'][i % 10],
-  nameEn: ['Paracetamol 500mg', 'Augmentin 625mg', 'Brufen 400mg', 'Omega 3 Caps', 'Vitamin D3 1000', 'Ampicillin 500mg', 'Cephalexin 500mg', 'Metronidazole 250mg', 'Atorvastatin 20mg', 'Lisinopril 10mg'][i % 10],
-  company: ['Pharco', 'GSK', 'Novartis', 'Amoun', 'EVA Pharma'][i % 5],
-  group: ['Analgesic', 'Antibiotic', 'Cardio', 'Vitamin', 'Anti-inflammatory'][i % 5],
-  sellPrice: [5, 28, 15, 45, 22, 18, 32, 12, 55, 38][i % 10],
-  stock: Math.floor(Math.random() * 200),
-  active: i % 7 !== 0,
-}))
+interface Product {
+  id: number
+  nameAr: string
+  nameEn: string
+  sellPrice: number
+  buyPrice: number
+  stock: number
+  barcode: string
+  active: boolean
+  group?: string
+  company?: string
+}
 
 export default function Products() {
   const [search, setSearch] = useState('')
-  const filtered = MOCK_PRODUCTS.filter(p =>
-    p.nameEn.toLowerCase().includes(search.toLowerCase()) ||
-    p.nameAr.includes(search)
-  )
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true)
+      try {
+        const res = await api.products.search(search, page)
+        setProducts(res.data)
+      } catch (err) {
+        console.error('Failed to fetch products', err)
+        // Fallback to empty if DB is unavailable
+        setProducts([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    const timeoutId = setTimeout(fetchProducts, 300)
+    return () => clearTimeout(timeoutId)
+  }, [search, page])
 
   return (
     <div>
@@ -63,35 +84,41 @@ export default function Products() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
-                <tr key={p.id}>
-                  <td style={{ color:'#334155', fontSize:'0.8rem' }}>{p.id}</td>
-                  <td style={{ fontWeight:500, color:'#cbd5e1' }}>{p.nameEn}</td>
-                  <td style={{ direction:'rtl', textAlign:'right', color:'#94a3b8' }}>{p.nameAr}</td>
-                  <td>{p.company}</td>
-                  <td><span className="badge badge-info">{p.group}</span></td>
-                  <td style={{ color:'#60a5fa', fontWeight:600 }}>{p.sellPrice} EGP</td>
-                  <td>
-                    <span style={{ color: p.stock < 20 ? '#f87171' : '#34d399', fontWeight:600 }}>{p.stock}</span>
-                  </td>
-                  <td>
-                    <span className={`badge ${p.active ? 'badge-success' : 'badge-danger'}`}>
-                      {p.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize:'0.75rem', padding:'4px 10px' }}>Edit</button>
-                  </td>
-                </tr>
-              ))}
+              {loading ? (
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: '40px' }}><Loader2 className="spin" style={{ margin: '0 auto', color: '#60a5fa' }} /></td></tr>
+              ) : products.length === 0 ? (
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No products found</td></tr>
+              ) : (
+                products.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ color:'#334155', fontSize:'0.8rem' }}>{p.id}</td>
+                    <td style={{ fontWeight:500, color:'#cbd5e1' }}>{p.nameEn}</td>
+                    <td style={{ direction:'rtl', textAlign:'right', color:'#94a3b8' }}>{p.nameAr}</td>
+                    <td>{p.company || 'Generic'}</td>
+                    <td><span className="badge badge-info">{p.group || 'General'}</span></td>
+                    <td style={{ color:'#60a5fa', fontWeight:600 }}>{p.sellPrice.toFixed(2)} EGP</td>
+                    <td>
+                      <span style={{ color: p.stock < 20 ? '#f87171' : '#34d399', fontWeight:600 }}>{p.stock}</span>
+                    </td>
+                    <td>
+                      <span className={`badge ${p.active ? 'badge-success' : 'badge-danger'}`}>
+                        {p.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize:'0.75rem', padding:'4px 10px' }}>Edit</button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
         <div style={{ padding:'14px 20px', borderTop:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontSize:'0.8rem', color:'#475569' }}>Showing {filtered.length} of 53,474 products</span>
+          <span style={{ fontSize:'0.8rem', color:'#475569' }}>Showing {products.length} products on page {page}</span>
           <div style={{ display:'flex', gap:8 }}>
-            <button className="btn btn-ghost btn-sm">← Prev</button>
-            <button className="btn btn-ghost btn-sm">Next →</button>
+            <button className="btn btn-ghost btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+            <button className="btn btn-ghost btn-sm" disabled={products.length < 50} onClick={() => setPage(p => p + 1)}>Next →</button>
           </div>
         </div>
       </div>
