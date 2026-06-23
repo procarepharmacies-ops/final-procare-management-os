@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+Thumbs.db
+*.csv
+__pycache__/
+*.pyc
+.venv/
+parser_test.py
