@@ -2,14 +2,19 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../App'
 import {
   LayoutDashboard, Package, ShoppingCart, Users, Kanban,
-  UserCheck, BarChart3, LogOut, Activity, ChevronRight, Pill
+  UserCheck, BarChart3, LogOut, Activity, ChevronRight, Pill,
+  Truck, CornerUpLeft, ScanLine, Database
 } from 'lucide-react'
 
 const navItems = [
   { path: 'dashboard',  label: 'Dashboard',   icon: LayoutDashboard },
   { path: 'sales',      label: 'POS / Sales',  icon: ShoppingCart },
+  { path: 'sales-return', label: 'Sales Return', icon: CornerUpLeft },
+  { path: 'purchasing', label: 'Purchasing',   icon: Truck },
   { path: 'products',   label: 'Products',     icon: Package },
   { path: 'customers',  label: 'Customers',    icon: Users },
+  { path: 'rx-reader',  label: 'RX Reader',    icon: ScanLine },
+  { path: 'titan-explorer', label: 'Titan Explorer', icon: Database },
   { path: 'kanban',     label: 'Task Board',   icon: Kanban },
   { path: 'employees',  label: 'Employees',    icon: UserCheck },
   { path: 'analytics',  label: 'Analytics',    icon: BarChart3 },

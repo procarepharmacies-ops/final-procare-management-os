@@ -8,6 +8,10 @@ import Customers from './pages/Customers'
 import Kanban from './pages/Kanban'
 import Employees from './pages/Employees'
 import Analytics from './pages/Analytics'
+import Purchasing from './pages/Purchasing'
+import SalesReturn from './pages/SalesReturn'
+import RxReader from './pages/RxReader'
+import TitanExplorer from './pages/TitanExplorer'
 import AppShell from './components/AppShell'
 import './index.css'
 
@@ -47,6 +51,10 @@ export default function App() {
             <Route path="kanban" element={<Kanban />} />
             <Route path="employees" element={<Employees />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="purchasing" element={<Purchasing />} />
+            <Route path="sales-return" element={<SalesReturn />} />
+            <Route path="rx-reader" element={<RxReader />} />
+            <Route path="titan-explorer" element={<TitanExplorer />} />
           </Route>
         </Routes>
       </BrowserRouter>
